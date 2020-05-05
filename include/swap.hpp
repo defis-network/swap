@@ -8,7 +8,7 @@ public:
    using contract::contract;
 
    static constexpr uint64_t TRADE_FEE = 2; //  (2 / 1000)
-   static constexpr uint64_t MINIMUM_LIQUIDITY = 1000; 
+   static constexpr uint64_t MINIMUM_LIQUIDITY = 10000; 
    static constexpr uint64_t PRICE_BASE = 10000; 
 
    swap(name receiver, name code, datastream<const char *> ds)
@@ -44,7 +44,7 @@ public:
 
    ACTION cancle(name user);
 
-   ACTION withdraw(name contract0, name contract1, symbol sym0, symbol sym1);
+   ACTION withdraw(name user, uint64_t mid, uint64_t amount);
 
    void handle_transfer(name from, name to, asset quantity, std::string memo, name code);
 
@@ -130,6 +130,7 @@ private:
    void do_deposit(uint64_t mid, name from, asset quantity, name code);
    void add_liquidity(name user);
    void mint_liquidity_token(uint64_t mid, name to, uint64_t amount);
+   void burn_liquidity_token(uint64_t mid, name to, uint64_t amount);
    void do_swap(uint64_t mid, name from, asset quantity, name code);
    void update(uint64_t mid, uint64_t balance0, uint64_t balance1, uint64_t reserve0, uint64_t reserve1);
    uint64_t get_mid();

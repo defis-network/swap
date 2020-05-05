@@ -6,8 +6,11 @@ ACTION swap::newmarket(name creator, name contract0, name contract1, symbol sym0
 
     auto supply0 = get_supply(contract0, sym0.code());
     check(supply0.amount > 0, "invalid token0");
+    check(supply0.symbol == sym0, "invalid symbol0");
+
     auto supply1 = get_supply(contract1, sym1.code());
     check(supply1.amount > 0, "invalid token1");
+    check(supply1.symbol == sym1, "invalid symbol1");
 
     _markets.emplace(creator, [&](auto &a) {
         a.mid = get_mid();
@@ -83,9 +86,40 @@ ACTION swap::cancle(name user)
     _orders.erase(itr);
 }
 
-ACTION swap::withdraw(name contract0, name contract1, symbol sym0, symbol sym1)
+ACTION swap::withdraw(name user, uint64_t mid, uint64_t amount)
 {
-    // TODO
+    require_auth(user);
+
+    auto m_itr = _markets.require_find(mid, "Market does not exist.");
+
+    asset balance0 = get_balance(m_itr->contract0, get_self(), m_itr->sym0.code());
+    asset balance1 = get_balance(m_itr->contract1, get_self(), m_itr->sym1.code());
+
+    uint64_t reserve0 = m_itr->reserve0.amount;
+    uint64_t reserve1 = m_itr->reserve1.amount;
+
+    uint64_t amount0 = amount * balance0.amount / m_itr->liquidity_token;
+    uint64_t amount1 = amount * balance1.amount / m_itr->liquidity_token;
+
+    check(amount0 > 0 && amount1 > 0, "INSUFFICIENT_LIQUIDITY_BURNED");
+
+    burn_liquidity_token(mid, user, amount);
+
+    action(
+        permission_level{get_self(), "active"_n},
+        m_itr->contract0,
+        name("transfer"),
+        make_tuple(get_self(), user, asset(amount0, m_itr->sym0), std::string("withdraw token0 liquidity")))
+        .send();
+
+    action(
+        permission_level{get_self(), "active"_n},
+        m_itr->contract1,
+        name("transfer"),
+        make_tuple(get_self(), user, asset(amount1, m_itr->sym1), std::string("withdraw token1 liquidity")))
+        .send();
+
+    update(mid, reserve0 - amount0, reserve1 - amount1, reserve0, reserve1);
 }
 
 void swap::handle_transfer(name from, name to, asset quantity, std::string memo, name code)
@@ -103,10 +137,13 @@ void swap::handle_transfer(name from, name to, asset quantity, std::string memo,
     {
         do_deposit(mid, from, quantity, code);
     }
-
-    if (act == "swap")
+    else if (act == "swap")
     {
         do_swap(mid, from, quantity, code);
+    }
+    else
+    {
+        check(false, "invalid memo");
     }
 }
 
@@ -255,6 +292,30 @@ void swap::mint_liquidity_token(uint64_t mid, name to, uint64_t amount)
     });
 }
 
+void swap::burn_liquidity_token(uint64_t mid, name to, uint64_t amount)
+{
+    auto m_itr = _markets.require_find(mid, "Market does not exist.");
+
+    liquidity_index liqtable(get_self(), mid);
+    auto liq_itr = liqtable.require_find(to.value, "User liquidity does not exist.");
+
+    check(liq_itr->token >= amount, "Invalid token amount.");
+    check(liq_itr->token > 0, "Liquidity token is zero.");
+
+    liqtable.modify(liq_itr, same_payer, [&](auto &a) {
+        a.token -= amount;
+    });
+
+    if (liq_itr->token == 0)
+    {
+        liqtable.erase(liq_itr);
+    }
+
+    _markets.modify(m_itr, same_payer, [&](auto &a) {
+        a.liquidity_token -= amount;
+    });
+}
+
 void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
 {
     print("do swap");
@@ -284,8 +345,8 @@ void swap::update(uint64_t mid, uint64_t balance0, uint64_t balance1, uint64_t r
             a.price0_cumulative_last += price0 * time_elapsed;
             a.price1_cumulative_last += price1 * time_elapsed;
 
-            a.price0_last = price0 / PRICE_BASE;
-            a.price1_last = price1 / PRICE_BASE;
+            a.price0_last = (double)price0 / PRICE_BASE;
+            a.price1_last = (double)price1 / PRICE_BASE;
         }
 
         a.last_update = current_time_point();
