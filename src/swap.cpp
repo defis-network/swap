@@ -15,6 +15,8 @@ ACTION swap::newmarket(name creator, name contract0, name contract1, symbol sym0
         a.contract1 = contract1;
         a.sym0 = sym0;
         a.sym1 = sym1;
+        a.reserve0.symbol = sym0;
+        a.reserve1.symbol = sym1;
         a.last_update = current_time_point();
     });
 }
@@ -83,6 +85,7 @@ ACTION swap::cancle(name user)
 
 ACTION swap::withdraw(name contract0, name contract1, symbol sym0, symbol sym1)
 {
+    // TODO
 }
 
 void swap::handle_transfer(name from, name to, asset quantity, std::string memo, name code)
@@ -107,19 +110,130 @@ void swap::handle_transfer(name from, name to, asset quantity, std::string memo,
     }
 }
 
+void swap::do_deposit(uint64_t mid, name from, asset quantity, name code)
+{
+    auto itr = _orders.require_find(from.value, "You don't have any order.");
+    auto m_itr = _markets.require_find(itr->mid, "Market does not exist.");
+
+    _orders.modify(itr, same_payer, [&](auto &s) {
+        if (code == m_itr->contract0 && quantity.symbol == m_itr->sym0)
+        {
+            s.quantity0 += quantity;
+        }
+
+        if (code == m_itr->contract1 && quantity.symbol == m_itr->sym1)
+        {
+            s.quantity1 += quantity;
+        }
+    });
+
+    if (itr->quantity0.amount > 0 && itr->quantity1.amount > 0)
+    {
+        add_liquidity(itr->owner);
+    }
+}
+
+void swap::add_liquidity(name user)
+{
+    auto itr = _orders.require_find(user.value, "You don't have any order.");
+    auto m_itr = _markets.require_find(itr->mid, "Market does not exist.");
+
+    // step1: get amount0 and amount1
+    uint64_t amount0_desired = itr->quantity0.amount;
+    uint64_t amount1_desired = itr->quantity1.amount;
+
+    uint64_t amount0 = 0;
+    uint64_t amount1 = 0;
+
+    uint64_t reserve0 = m_itr->reserve0.amount;
+    uint64_t reserve1 = m_itr->reserve1.amount;
+
+    uint64_t refund_amount0 = 0;
+    uint64_t refund_amount1 = 0;
+
+    if (reserve0 == 0 && reserve1 == 0)
+    {
+        amount0 = amount0_desired;
+        amount1 = amount1_desired;
+    }
+    else
+    {
+        uint64_t amount1_optimal = quote(amount0_desired, reserve0, reserve1);
+
+        if (amount1_optimal <= amount1_desired)
+        {
+            amount0 = amount0_desired;
+            amount1 = amount1_optimal;
+
+            refund_amount1 = amount1_desired - amount1_optimal;
+        }
+        else
+        {
+            uint64_t amount0_optimal = quote(amount1_desired, reserve1, reserve0);
+            check(amount0_optimal <= amount0_desired, "math error");
+
+            amount0 = amount0_optimal;
+            amount1 = amount1_desired;
+
+            refund_amount0 = amount0_desired - amount0_optimal;
+        }
+    }
+
+    // step2: refund
+    if (refund_amount0 > 0)
+    {
+        action(
+            permission_level{get_self(), "active"_n},
+            m_itr->contract0,
+            name("transfer"),
+            make_tuple(get_self(), user, asset(refund_amount0, m_itr->sym0), std::string("deposit refund")))
+            .send();
+    }
+
+    if (refund_amount1 > 0)
+    {
+        action(
+            permission_level{get_self(), "active"_n},
+            m_itr->contract1,
+            name("transfer"),
+            make_tuple(get_self(), user, asset(refund_amount1, m_itr->sym1), std::string("deposit refund")))
+            .send();
+    }
+
+    // TODO step3: mint liquidity token
+    uint64_t token_mint = 1;
+
+    // step4: update market
+    _markets.modify(m_itr, same_payer, [&](auto &a) {
+        a.reserve0.amount += amount0;
+        a.reserve1.amount += amount1;
+        a.liquidity_token += token_mint;
+    });
+
+    // step5: update user liquidity token
+    liquidity_index liqtable(get_self(), itr->mid);
+    auto liq_itr = liqtable.find(user.value);
+    if (liq_itr == liqtable.end())
+    {
+        liqtable.emplace(get_self(), [&](auto &a) {
+            a.owner = user;
+            a.token = token_mint;
+        });
+    }
+    else
+    {
+        liqtable.modify(liq_itr, same_payer, [&](auto &a) {
+            a.token += token_mint;
+        });
+    }
+
+    // step6: finish deposit, remove order
+    _orders.erase(itr);
+}
+
 void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
 {
     print("do swap");
-}
-
-void swap::do_deposit(uint64_t mid, name from, asset quantity, name code)
-{
-    print("do deposit");
-}
-
-void swap::add_liquidity(uint64_t mid, name from, asset quantity, name code)
-{
-    print("add liquidity");
 }
 
 void swap::update(asset balance0, asset balance1, asset reserve0, asset reserve1)
@@ -132,6 +246,14 @@ uint64_t swap::get_mid()
     glb.market_id += 1;
     _globals.set(glb, _self);
     return glb.market_id;
+}
+
+// given some amount of an asset and pair reserves, returns an equivalent amount of the other asset
+uint64_t swap::quote(uint64_t amount0, uint64_t reserve0, uint64_t reserve1)
+{
+    check(amount0 > 0, "INSUFFICIENT_AMOUNT0");
+    check(reserve0 > 0 && reserve1 > 0, "INSUFFICIENT_LIQUIDITY");
+    return amount0 * reserve1 / reserve0;
 }
 
 extern "C"

@@ -88,56 +88,45 @@ private:
       EOSLIB_SERIALIZE(market, (mid)(contract0)(contract1)(sym0)(sym1)(reserve0)(reserve1)(liquidity_token)(price0_cumulative_last)(price0_cumulative_last)(klast)(last_update))
    };
 
-   typedef multi_index<"markets"_n, market> markets;
-
-   markets _markets;
-
    TABLE order
    {
       name owner;
-
       uint64_t mid;
-
       asset quantity0;
       asset quantity1;
 
       uint64_t primary_key() const { return owner.value; }
-
       EOSLIB_SERIALIZE(order, (owner)(mid)(quantity0)(quantity1))
    };
-
-   typedef multi_index<"orders"_n, order> orders;
-
-   orders _orders;
 
    TABLE liquidity
    {
       name owner;
-
       uint64_t token;
 
       uint64_t primary_key() const { return owner.value; }
-
       EOSLIB_SERIALIZE(liquidity, (owner)(token))
    };
 
    TABLE globals
    {
       uint64_t market_id;
-
       EOSLIB_SERIALIZE(globals, (market_id))
    };
 
+   typedef multi_index<"markets"_n, market> markets;
+   markets _markets;
+   typedef multi_index<"orders"_n, order> orders;
+   orders _orders;
    typedef eosio::singleton<"globals"_n, globals> globals_index;
    globals_index _globals;
+   typedef multi_index<"liquidity"_n, liquidity> liquidity_index;
 
-   void do_swap(uint64_t mid, name from,  asset quantity, name code);
-
-   void do_deposit(uint64_t mid, name from,  asset quantity, name code);
-   
-   void add_liquidity(uint64_t mid, name from,  asset quantity, name code);
-
+   void do_deposit(uint64_t mid, name from, asset quantity, name code);
+   void add_liquidity(name user);
+   void do_swap(uint64_t mid, name from, asset quantity, name code);
    void update(asset balance0, asset balance1, asset reserve0, asset reserve1);
-
    uint64_t get_mid();
+   uint64_t quote(uint64_t amount0, uint64_t reserve0, uint64_t reserve1);
 };
+
