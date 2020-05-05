@@ -201,34 +201,58 @@ void swap::add_liquidity(name user)
     }
 
     // TODO step3: mint liquidity token
-    uint64_t token_mint = 1;
+    uint64_t token_mint = 0;
 
-    // step4: update market
-    _markets.modify(m_itr, same_payer, [&](auto &a) {
-        a.reserve0.amount += amount0;
-        a.reserve1.amount += amount1;
-        a.liquidity_token += token_mint;
-    });
+    uint64_t total_liquidity_token = m_itr->liquidity_token;
 
-    // step5: update user liquidity token
-    liquidity_index liqtable(get_self(), itr->mid);
-    auto liq_itr = liqtable.find(user.value);
+    if (total_liquidity_token == 0)
+    {
+        token_mint = sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+        mint_liquidity_token(itr->mid, get_self(), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
+    }
+    else
+    {
+        auto x = amount0 * total_liquidity_token / reserve0;
+        auto y = amount1 * total_liquidity_token / reserve1;
+        token_mint = std::min(amount0 * total_liquidity_token / reserve0, amount1 * total_liquidity_token / reserve1);
+
+        print("debug: x:", x, " ,y:", y, " ,min:", token_mint);
+    }
+
+    check(token_mint > 0, "INSUFFICIENT_LIQUIDITY_MINTED");
+
+    // step4: update user liquidity token
+    mint_liquidity_token(itr->mid, user, token_mint);
+
+    // step5: update market
+    update(itr->mid, reserve0 + amount0, reserve1 + amount1, reserve0, reserve1);
+
+    // step6: finish deposit, remove order
+    _orders.erase(itr);
+}
+
+void swap::mint_liquidity_token(uint64_t mid, name to, uint64_t amount)
+{
+    liquidity_index liqtable(get_self(), mid);
+    auto liq_itr = liqtable.find(to.value);
     if (liq_itr == liqtable.end())
     {
         liqtable.emplace(get_self(), [&](auto &a) {
-            a.owner = user;
-            a.token = token_mint;
+            a.owner = to;
+            a.token = amount;
         });
     }
     else
     {
         liqtable.modify(liq_itr, same_payer, [&](auto &a) {
-            a.token += token_mint;
+            a.token += amount;
         });
     }
 
-    // step6: finish deposit, remove order
-    _orders.erase(itr);
+    auto m_itr = _markets.require_find(mid, "Market does not exist.");
+    _markets.modify(m_itr, same_payer, [&](auto &a) {
+        a.liquidity_token += amount;
+    });
 }
 
 void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
@@ -236,8 +260,36 @@ void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
     print("do swap");
 }
 
-void swap::update(asset balance0, asset balance1, asset reserve0, asset reserve1)
+void swap::update(uint64_t mid, uint64_t balance0, uint64_t balance1, uint64_t reserve0, uint64_t reserve1)
 {
+    auto m_itr = _markets.require_find(mid, "Market does not exist.");
+
+    auto last_sec = m_itr->last_update.sec_since_epoch();
+    uint64_t time_elapsed = 1;
+    if (last_sec > 0)
+    {
+        time_elapsed = current_time_point().sec_since_epoch() - last_sec;
+    }
+
+    _markets.modify(m_itr, same_payer, [&](auto &a) {
+        a.reserve0.amount = balance0;
+        a.reserve1.amount = balance1;
+
+        if (time_elapsed > 0 && reserve0 != 0 && reserve1 != 0)
+        {
+            // * never overflows, and + overflow is desired
+            auto price0 = PRICE_BASE * reserve1 / reserve0;
+            auto price1 = PRICE_BASE * reserve0 / reserve1;
+            print(" debug: price0: ", price0, " ,price1:", price1, " ,time_elapsed:", time_elapsed);
+            a.price0_cumulative_last += price0 * time_elapsed;
+            a.price1_cumulative_last += price1 * time_elapsed;
+
+            a.price0_last = price0 / PRICE_BASE;
+            a.price1_last = price1 / PRICE_BASE;
+        }
+
+        a.last_update = current_time_point();
+    });
 }
 
 uint64_t swap::get_mid()

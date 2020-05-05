@@ -1,5 +1,6 @@
 #include <types.hpp>
 #include <utils.hpp>
+#include <math.h>
 
 CONTRACT swap : public contract
 {
@@ -7,6 +8,8 @@ public:
    using contract::contract;
 
    static constexpr uint64_t TRADE_FEE = 2; //  (2 / 1000)
+   static constexpr uint64_t MINIMUM_LIQUIDITY = 1000; 
+   static constexpr uint64_t PRICE_BASE = 10000; 
 
    swap(name receiver, name code, datastream<const char *> ds)
        : contract(receiver, code, ds),
@@ -77,15 +80,17 @@ private:
 
       uint64_t liquidity_token;
 
+      double price0_last; // the last price is easy to controll, just for kline display, don't use in other dapp directly
+      double price1_last;
+
       uint64_t price0_cumulative_last;
       uint64_t price1_cumulative_last;
-      uint64_t klast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
       time_point_sec last_update;
 
       uint64_t primary_key() const { return mid; }
 
-      EOSLIB_SERIALIZE(market, (mid)(contract0)(contract1)(sym0)(sym1)(reserve0)(reserve1)(liquidity_token)(price0_cumulative_last)(price0_cumulative_last)(klast)(last_update))
+      EOSLIB_SERIALIZE(market, (mid)(contract0)(contract1)(sym0)(sym1)(reserve0)(reserve1)(liquidity_token)(price0_last)(price1_last)(price0_cumulative_last)(price0_cumulative_last)(last_update))
    };
 
    TABLE order
@@ -124,8 +129,9 @@ private:
 
    void do_deposit(uint64_t mid, name from, asset quantity, name code);
    void add_liquidity(name user);
+   void mint_liquidity_token(uint64_t mid, name to, uint64_t amount);
    void do_swap(uint64_t mid, name from, asset quantity, name code);
-   void update(asset balance0, asset balance1, asset reserve0, asset reserve1);
+   void update(uint64_t mid, uint64_t balance0, uint64_t balance1, uint64_t reserve0, uint64_t reserve1);
    uint64_t get_mid();
    uint64_t quote(uint64_t amount0, uint64_t reserve0, uint64_t reserve1);
 };
