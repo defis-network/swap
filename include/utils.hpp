@@ -1,3 +1,4 @@
+#include <types.hpp>
 namespace utils
 {
 using std::string;
@@ -35,4 +36,29 @@ void parse_memo(string memo, string *action, uint64_t *id)
    }
 }
 
+asset get_supply(const name &token_contract_account, const symbol_code &sym_code)
+{
+   stats statstable(token_contract_account, sym_code.raw());
+   std::string err_msg = "invalid token contract: ";
+   err_msg.append(token_contract_account.to_string());
+   const auto &st = statstable.require_find(sym_code.raw(), err_msg.c_str());
+   return st->supply;
+}
+
+asset get_balance(const name &token_contract_account, const name &owner, const symbol_code &sym_code)
+{
+   accounts accountstable(token_contract_account, owner.value);
+   const auto &ac = accountstable.get(sym_code.raw());
+   return ac.balance;
+}
+
+void inline_transfer(name contract, name from, name to, asset quantity, string memo)
+{
+    action(
+        permission_level{from, "active"_n},
+        contract,
+        name("transfer"),
+        make_tuple(from, to, quantity, memo))
+        .send();
+}
 } // namespace utils
