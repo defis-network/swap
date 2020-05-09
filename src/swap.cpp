@@ -240,7 +240,7 @@ void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
     {
         amount_out = get_amount_out(amount_in, reserve1, reserve0);
         utils::inline_transfer(m_itr->contract0, get_self(), from, asset(amount_out, m_itr->sym0), std::string("swap success"));
-        update(mid, reserve0 - amount_in, reserve1 + amount_out, reserve0, reserve1);
+        update(mid, reserve0 - amount_out, reserve1 + amount_in, reserve0, reserve1);
     }
 }
 

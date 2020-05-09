@@ -64,7 +64,7 @@ private:
       time_point_sec last_update;
 
       uint64_t primary_key() const { return mid; }
-      EOSLIB_SERIALIZE(market, (mid)(contract0)(contract1)(sym0)(sym1)(reserve0)(reserve1)(liquidity_token)(price0_last)(price1_last)(price0_cumulative_last)(price0_cumulative_last)(last_update))
+      EOSLIB_SERIALIZE(market, (mid)(contract0)(contract1)(sym0)(sym1)(reserve0)(reserve1)(liquidity_token)(price0_last)(price1_last)(price0_cumulative_last)(price1_cumulative_last)(last_update))
    };
 
    TABLE order
