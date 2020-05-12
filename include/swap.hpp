@@ -12,7 +12,7 @@ public:
 
    static constexpr bool PROTOCOL_FEE_ON = true;
    static constexpr uint64_t PROTOCOL_FEE = 2; // 0.02%
-   static constexpr name PROTOCOL_FEE_ACCOUNT{"jinswapfee11"_n};
+   static constexpr name PROTOCOL_FEE_ACCOUNT{"jindaojindao"_n};
 
    swap(name receiver, name code, datastream<const char *> ds)
        : contract(receiver, code, ds),
