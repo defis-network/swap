@@ -3,6 +3,7 @@
 ACTION swap::newmarket(name creator, name contract0, name contract1, symbol sym0, symbol sym1)
 {
     require_auth(creator);
+    check((contract0 != contract1) || (sym0 != sym1), "invalid pair");
     auto supply0 = utils::get_supply(contract0, sym0.code());
     check(supply0.amount > 0, "invalid token0");
     check(supply0.symbol == sym0, "invalid symbol0");
@@ -75,13 +76,17 @@ void swap::handle_transfer(name from, name to, asset quantity, std::string memo,
 {
     if (from == _self || to != _self)
         return;
-    std::string act;
-    uint64_t mid = 0;
-    utils::parse_memo(memo, &act, &mid);
+    std::vector<std::string> strs = utils::split(memo, ":");
+    std::string act = strs[0];
+    uint64_t mid = atoi(strs[1].c_str());
+
     if (act == "deposit")
         do_deposit(mid, from, quantity, code);
     else if (act == "swap")
-        do_swap(mid, from, quantity, code);
+    {
+        uint64_t min_out = atoi(strs[2].c_str());
+        do_swap(mid, from, quantity, code, min_out);
+    }
     else
         check(false, "invalid memo");
 }
@@ -212,7 +217,7 @@ void swap::burn_liquidity_token(uint64_t mid, name to, uint64_t amount)
     });
 }
 
-void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
+void swap::do_swap(uint64_t mid, name from, asset quantity, name code, uint64_t min_out)
 {
     auto m_itr = _markets.require_find(mid, "Market does not exist.");
     check((code == m_itr->contract0 || code == m_itr->contract1), "contract error");
@@ -230,15 +235,17 @@ void swap::do_swap(uint64_t mid, name from, asset quantity, name code)
     uint64_t reserve0 = m_itr->reserve0.amount;
     uint64_t reserve1 = m_itr->reserve1.amount;
     uint64_t amount_out = 0;
-    if (code == m_itr->contract0)
+    if (code == m_itr->contract0 && quantity.symbol == m_itr->sym0)
     {
         amount_out = get_amount_out(amount_in, reserve0, reserve1);
+        check(amount_out >= min_out, "INSUFFICIENT_OUTPUT_AMOUNT");
         utils::inline_transfer(m_itr->contract1, get_self(), from, asset(amount_out, m_itr->sym1), std::string("swap success"));
         update(mid, reserve0 + amount_in, reserve1 - amount_out, reserve0, reserve1);
     }
     else
     {
         amount_out = get_amount_out(amount_in, reserve1, reserve0);
+        check(amount_out >= min_out, "INSUFFICIENT_OUTPUT_AMOUNT");
         utils::inline_transfer(m_itr->contract0, get_self(), from, asset(amount_out, m_itr->sym0), std::string("swap success"));
         update(mid, reserve0 - amount_out, reserve1 + amount_in, reserve0, reserve1);
     }

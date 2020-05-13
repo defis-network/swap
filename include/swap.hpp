@@ -105,7 +105,7 @@ private:
    void add_liquidity(name user);
    void mint_liquidity_token(uint64_t mid, name to, uint64_t amount);
    void burn_liquidity_token(uint64_t mid, name to, uint64_t amount);
-   void do_swap(uint64_t mid, name from, asset quantity, name code);
+   void do_swap(uint64_t mid, name from, asset quantity, name code, uint64_t min_out);
    void update(uint64_t mid, uint64_t balance0, uint64_t balance1, uint64_t reserve0, uint64_t reserve1);
    uint64_t get_mid();
    uint64_t quote(uint64_t amount0, uint64_t reserve0, uint64_t reserve1);
