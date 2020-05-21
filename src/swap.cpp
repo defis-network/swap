@@ -10,6 +10,25 @@ ACTION swap::newmarket(name creator, name contract0, name contract1, symbol sym0
     auto supply1 = utils::get_supply(contract1, sym1.code());
     check(supply1.amount > 0, "invalid token1");
     check(supply1.symbol == sym1, "invalid symbol1");
+
+    auto itr = _markets.begin();
+    bool pair_exists = false;
+    while (itr != _markets.end())
+    {
+        if (itr->contract0 == contract0 && itr->sym0 == sym0 && itr->contract1 == contract1 && itr->sym1 == sym1)
+        {
+            pair_exists = true;
+            break;
+        }
+        if (itr->contract0 == contract1 && itr->sym0 == sym1 && itr->contract1 == contract0 && itr->sym1 == sym0)
+        {
+            pair_exists = true;
+            break;
+        }
+        itr++;
+    }
+    check(!pair_exists, "market already exists");
+
     _markets.emplace(creator, [&](auto &a) {
         a.mid = get_mid();
         a.contract0 = contract0;
